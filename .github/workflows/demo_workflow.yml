@@ -1,0 +1,194 @@
+name: Demo workflow
+
+on: push
+
+jobs:
+  build_and_deploy_preview:
+    runs-on: ubuntu-latest
+    if: "!contains(github.event.head_commit.message, '[skip ci]')"
+
+    env:
+      NOTIFY_WEBHOOK: ${{ secrets.NOTIFY_WEBHOOK }}
+
+    steps:
+      - uses: actions/checkout@v2
+      - uses: ./.github/actions/notifier-start
+        if: always() && !env.ACT
+
+      - name: View context attributes
+        uses: actions/github-script@v4
+        with:
+          script: console.log(context)
+
+      - name: Dump env
+        run: env
+
+      - name: Sleep
+        id: sleep
+        run: ./sleep.sh
+
+      - name: Fail deliberately
+        id: fail
+        run: ./fail.sh
+
+      - name: Pass
+        id: pass
+        run: ./pass.sh
+
+      - uses: ./.github/actions/notifier-complete
+        if: always() && !env.ACT
+        with:
+          job_status: ${{ job.status }}
+          parent_steps: "${{ toJSON(steps) }}"
+
+      - name: Dump env again
+        if: always()
+        run: env
+
+      - name: Dump steps context
+        if: always()
+        env:
+          STEPS_CONTEXT: ${{ toJSON(steps) }}
+        run: echo "$STEPS_CONTEXT"
+
+      # - name: Dump steps again
+      #   if: always()
+      #   run: |
+      #     echo "${{ toJSON(steps) }}"
+
+      # - name: Use Node.js
+      #   uses: actions/setup-node@v1
+      #   with:
+      #     node-version: 15.x
+      # # - name: Setup ACT debugging container
+      # #   if: ${{ env.ACT }}
+      # #   run: ./.ci/debug/setup_debugging.sh
+      # - name: Setup Notification Preamble
+      #   if: always() && !env.ACT
+      #   run: |
+      #     echo -n "${{format('\
+      #     **[\`{2}:{3}\`]({0}/{1}/actions/runs/{3}?check_suite_focus=true)**\
+      #     &emsp;on [{1}]({0}/{1})&emsp;([all actions]({0}/{1}/actions))&emsp;
+
+      #     &nbsp;&nbsp;&nbsp;&emsp;&emsp;[\`{4}\`]({0}/{1}/tree/{4}):[\`{5}\`]({0}/{1}/commit/{6})\
+      #     &emsp;([compare]({8}))&emsp;{7}push&emsp;by [{9}]({0}/{9})
+
+      #     &nbsp;&nbsp;&nbsp;&emsp;&emsp;\`{10}...\`
+      #     ',
+      #       'https://www.github.com',
+      #       github.repository,
+      #       github.job,
+      #       github.run_id,
+      #       env.BRANCH_NAME,
+      #       env.SHORT_COMMIT,
+      #       github.sha,
+      #       github.event.forced && 'force ' || '',
+      #       github.event.compare,
+      #       github.actor,
+      #       env.COMMIT_MSG_TRUNCATED
+      #     ) }}" > preamble.txt
+
+      # # Setup
+      # - name: Setup Tooling
+      #   id: setup
+      #   run: ./pass.sh
+
+      # # Install
+      # - uses: actions/cache@v1
+      #   with:
+      #     path: /home/runner/yarn-cache
+      #     key: yarncache
+      # - name: Install Packages
+      #   id: install
+      #   run: ./pass.sh
+      #   env:
+      #     YARN_CACHE_FOLDER: /home/runner/yarn-cache
+      #     # For debugging only, but must be defined here or `act` ignores it
+      #     BREAK_INTERACTIVE_BEFORE_INSTALL: ${{ secrets.BREAK_INTERACTIVE_BEFORE_INSTALL }}
+
+      # # Typecheck
+      # - uses: actions/cache@v1
+      #   with:
+      #     path: ${github.workspace}
+      #     key: typecache
+      # - name: Typecheck
+      #   id: typecheck
+      #   run: ./pass.sh
+
+      # # Build
+      # - name: Build Static Website
+      #   id: build
+
+      #   # Temporary: Builds take forever. Make them opt in with a pragma.
+      #   if: "contains(github.event.head_commit.message, '[build]')"
+      #   run: ./pass.sh
+      #   env:
+      #     DOCSEARCH_PUBLIC_CLIENT_API_KEY: ${{ secrets.DOCSEARCH_PUBLIC_CLIENT_API_KEY }}
+
+      # # Notifications
+      # - name: Calculate Time
+      #   if: always()
+      #   run: |
+      #     export END_TIME="$(printf '%(%s)T\n' -1)"
+      #     export TIME_ELAPSED="$(($END_TIME-$START_TIME))"
+      #     export DURATION="$(printf '%dm:%ds\n' $((TIME_ELAPSED%3600/60)) $((TIME_ELAPSED%60)))"
+      #     echo "END_TIME="$END_TIME"" >> $GITHUB_ENV
+      #     echo "DURATION="$DURATION"" >> $GITHUB_ENV
+      # - name: Send Notification
+      #   if: always()
+      #   env:
+      #     ICON_SUCCESS: ':white_check_mark:'
+      #     ICON_FAIL: ':skull_and_crossbones:'
+      #     ICON_CANCEL: ':heavy_multiplication_x:'
+      #     ICON_UNKNOWN: ':grey_question:'
+
+      #     UNI_SUCCESS: '&#10003;'
+      #     UNI_CANCEL: '&#88;'
+      #     UNI_SKIP: '&#8213;'
+      #     UNI_UNKNOWN: '&#63;'
+      #   run: |
+      #     echo -n "${{
+      #       format('
+      #     &emsp;{0}&emsp;Setup
+      #     &emsp;{1}&emsp;Install
+      #     &emsp;{2}&emsp;Typecheck
+      #     &emsp;{3}&emsp;Build
+      #     &emsp;&#9719;&emsp; _{4}_
+      #     ',
+      #     steps.setup.outcome == 'success' && env.UNI_SUCCESS
+      #       || ( steps.setup.outcome == 'failure' && env.ICON_FAIL
+      #         || (steps.setup.outcome == 'cancelled' && env.UNI_CANCEL
+      #           || env.UNI_SKIP || env.UNI_UNKNOWN)),
+
+      #     steps.install.outcome == 'success' && env.UNI_SUCCESS
+      #       || ( steps.install.outcome == 'failure' && env.ICON_FAIL
+      #         || (steps.install.outcome == 'cancelled' && env.UNI_CANCEL
+      #           || env.UNI_SKIP || env.UNI_UNKNOWN)),
+
+      #     steps.typecheck.outcome == 'success' && env.UNI_SUCCESS
+      #       || ( steps.typecheck.outcome == 'failure' && env.ICON_FAIL
+      #         || (steps.typecheck.outcome == 'cancelled' && env.UNI_CANCEL
+      #           || env.UNI_SKIP || env.UNI_UNKNOWN)),
+
+      #     steps.build.outcome == 'success' && env.UNI_SUCCESS
+      #       || ( steps.build.outcome == 'failure' && env.ICON_FAIL
+      #         || (steps.build.outcome == 'cancelled' && env.UNI_CANCEL
+      #           || env.UNI_SKIP || env.UNI_UNKNOWN)),
+
+      #     env.DURATION
+      #     ) }}" >> notify.txt \
+      #       && JOB_ICON="${{ job.status == 'success' && env.ICON_SUCCESS
+      #                 || ( job.status == 'failure ' && env.ICON_FAIL
+      #                 || job.status == 'cancelled' && env.ICON_CANCEL
+      #                 || env.ICON_UNKNOWN ) }}" \
+      #         ./notify.sh notify.txt
+
+      # - name: Dump GitHub context
+      #   env:
+      #     GITHUB_CONTEXT: ${{ toJSON(github) }}
+      #   run: echo "$GITHUB_CONTEXT"
+
+      # - name: Dump Job context
+      #   env:
+      #     JOB_CONTEXT: ${{ toJSON(job) }}
+      #   run: echo "$JOB_CONTEXT"
